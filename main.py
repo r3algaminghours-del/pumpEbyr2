@@ -109,11 +109,24 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
-async def on_startup(application):
-    # Запускаем проверку токенов после старта бота
+async def main():
+    # Запускаем бота
+    # Создаём фоновую задачу проверки токенов
     asyncio.create_task(check_tokens_loop())
+
+    print("Bot is starting...")
+    await application.initialize()
+    await application.start()
+    print("Bot started polling")
+    await application.run_polling()
+    await application.stop()
+    await application.shutdown()
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
-    application.post_init(on_startup)
-    application.run_polling()
+
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("Shutting down...")
+
