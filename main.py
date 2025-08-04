@@ -15,7 +15,7 @@ from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
 from filter import is_promising
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8180214699:AAEU79Dd8N_kCZZFXoqdifB3u0-B1BxiHgQ")
-CHANNEL_ID = 1758725762  # Замените на свой канал (можно использовать отрицательный ID для каналов)
+CHANNEL_ID = 1758725762  # Твой канал
 
 seen = set()
 signals_sent = 0
@@ -109,23 +109,11 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
-async def main():
-    # Запускаем задачу цикла проверки токенов
+async def on_startup(application):
+    # Запускаем проверку токенов после старта бота
     asyncio.create_task(check_tokens_loop())
-    print("Bot is initializing...")
-
-    await application.initialize()
-    await application.start()
-    print("Bot started polling")
-    await application.run_polling()  # Запускает polling и не выходит пока бот не остановлен
 
 if __name__ == "__main__":
-    # Flask в отдельном потоке
     threading.Thread(target=run_flask, daemon=True).start()
-
-    # Основной asyncio loop
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        print("Shutting down...")
-
+    application.post_init(on_startup)
+    application.run_polling()
