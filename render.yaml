@@ -9,4 +9,4 @@ services:
     healthCheckPath: /
     envVars:
       - key: TELEGRAM_TOKEN
-        value: 8180214699:AAEU79Dd8N_kCZZFXoqdifB3u0-B1BxiHgQ
+        value: 8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE
