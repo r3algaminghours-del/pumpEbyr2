@@ -17,11 +17,8 @@ from pumpfun_api import fetch_latest_tokens, fetch_token_info, minutes_since as 
 from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
 from filter import is_promising
 
-# Токен бота
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE")
-
-# ID твоего канала (отрицательное число, обязательно именно так!)
-CHANNEL_ID = -1002379895969
+CHANNEL_ID = -1002379895969  # Убедись, что бот — админ в канале!
 
 seen = set()
 signals_sent = 0
@@ -35,14 +32,15 @@ def home():
 
 async def send_signal(info, source):
     global signals_sent
+    name = info.get("name", "")
+    symbol = info.get("symbol", "")
     link = f"https://pump.fun/{info.get('address')}" if source == "pumpfun" else info.get("url", "")
     mc = info.get("marketCap", 0)
     holders = info.get("holders", 0)
     dev_hold = info.get("devTokenPercentage", 0)
     inflow = info.get("netflow5m", 0)
     vol = info.get("volume5m", 0)
-    name = info.get("name", "")
-    symbol = info.get("symbol", "")
+
     msg = (
         f"[NEW] Token on {source.title()}\n"
         f"{name} (${symbol})\n\n"
@@ -55,56 +53,64 @@ async def send_signal(info, source):
     )
     await application.bot.send_message(chat_id=CHANNEL_ID, text=msg)
     signals_sent += 1
-    print(f"Signal sent for token {name} ({symbol}) from {source}")
+    print(f"[SEND] Signal sent for {name} (${symbol}) on {source.title()}")
 
 async def check_tokens_loop():
     while True:
-        print("Checking tokens...")
+        print("[LOOP] Checking tokens...")
 
-        for token in fetch_latest_tokens():
-            mint = token.get("address")
-            if mint in seen:
-                continue
-            print(f"Pump.fun found new token: {mint}")
-            seen.add(mint)
+        # Pump.fun
+        try:
+            for token in fetch_latest_tokens():
+                mint = token.get("address")
+                if mint in seen:
+                    continue
+                print(f"[PUMP] New token found: {mint}")
+                seen.add(mint)
 
-            info = fetch_token_info(mint)
-            if not info:
-                print(f"Pump.fun: No info for token {mint}")
-                continue
-            if pump_minutes(info.get("created_at", 0)) > 30:
-                print(f"Pump.fun: Token {mint} is older than 30 minutes, skipping")
-                continue
-            if is_promising(info):
-                print(f"Pump.fun: Token {mint} passed filter, sending signal")
-                await send_signal(info, source="pumpfun")
-            else:
-                print(f"Pump.fun: Token {mint} did NOT pass filter")
+                info = fetch_token_info(mint)
+                if not info:
+                    print(f"[PUMP] No info for {mint}")
+                    continue
+                if pump_minutes(info.get("created_at", 0)) > 30:
+                    print(f"[PUMP] Token {mint} older than 30m, skipping")
+                    continue
+                if is_promising(info):
+                    print(f"[PUMP] Token {mint} PASSED filters")
+                    await send_signal(info, source="pumpfun")
+                else:
+                    print(f"[PUMP] Token {mint} did NOT pass filters")
+        except Exception as e:
+            print(f"[PUMP] Error: {e}")
 
-        for token in fetch_raylaunch_tokens():
-            mint = token.get("address") or token.get("mint")
-            if mint in seen:
-                continue
-            print(f"RayLaunch found new token: {mint}")
-            seen.add(mint)
+        # RayLaunch
+        try:
+            for token in fetch_raylaunch_tokens():
+                mint = token.get("address") or token.get("mint")
+                if mint in seen:
+                    continue
+                print(f"[RAY] New token found: {mint}")
+                seen.add(mint)
 
-            token["marketCap"] = token.get("market_cap", 0)
-            token["name"] = token.get("name", "Unknown")
-            token["symbol"] = token.get("symbol", "???")
-            token["holders"] = token.get("holders", 0)
-            token["devTokenPercentage"] = token.get("dev_hold", 0)
-            token["volume5m"] = token.get("volume", 0)
-            token["netflow5m"] = token.get("inflow", 0)
-            token["url"] = token.get("url", "")
+                token["marketCap"] = token.get("market_cap", 0)
+                token["name"] = token.get("name", "Unknown")
+                token["symbol"] = token.get("symbol", "???")
+                token["holders"] = token.get("holders", 0)
+                token["devTokenPercentage"] = token.get("dev_hold", 0)
+                token["volume5m"] = token.get("volume", 0)
+                token["netflow5m"] = token.get("inflow", 0)
+                token["url"] = token.get("url", "")
 
-            if ray_minutes(token.get("created_at", time.time())) > 30:
-                print(f"RayLaunch: Token {mint} is older than 30 minutes, skipping")
-                continue
-            if is_promising(token):
-                print(f"RayLaunch: Token {mint} passed filter, sending signal")
-                await send_signal(token, source="raylaunch")
-            else:
-                print(f"RayLaunch: Token {mint} did NOT pass filter")
+                if ray_minutes(token.get("created_at", time.time())) > 30:
+                    print(f"[RAY] Token {mint} older than 30m, skipping")
+                    continue
+                if is_promising(token):
+                    print(f"[RAY] Token {mint} PASSED filters")
+                    await send_signal(token, source="raylaunch")
+                else:
+                    print(f"[RAY] Token {mint} did NOT pass filters")
+        except Exception as e:
+            print(f"[RAY] Error: {e}")
 
         await asyncio.sleep(10)
 
@@ -117,24 +123,25 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Signals sent: {signals_sent}\n"
         f"Uptime: {mins} minutes"
     )
+    print(f"[STATUS] Command from {update.effective_user.id}")
     await update.message.reply_text(msg)
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"Received message from {update.effective_user.id}: {update.message.text}")
+    user_id = update.effective_user.id
+    text = update.message.text
+    print(f"[ECHO] Message from {user_id}: {text}")
     await update.message.reply_text("Got your message!")
 
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
 async def main():
-    # Запускаем цикл проверки токенов в фоне
     asyncio.create_task(check_tokens_loop())
-
-    print("Bot is starting...")
+    print("[INIT] Bot is starting...")
 
     await application.initialize()
     await application.start()
-    print("Bot started polling")
+    print("[INIT] Bot started polling")
     await application.run_polling()
     await application.stop()
     await application.shutdown()
@@ -149,4 +156,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        print("Shutting down...")
+        print("[SHUTDOWN] Bot stopped")
