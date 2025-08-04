@@ -1,6 +1,6 @@
+import os
 import time
 import threading
-import os
 import nest_asyncio
 import asyncio
 from flask import Flask
@@ -53,44 +53,49 @@ async def send_signal(info, source, application):
     signals_sent += 1
 
 async def check_tokens_loop(application):
-    while True:
-        print("[LOOP] Checking tokens...")
+    try:
+        while True:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] [LOOP] Checking tokens...")
 
-        for token in fetch_latest_tokens():
-            mint = token.get("address")
-            if mint in seen:
-                continue
-            seen.add(mint)
+            for token in fetch_latest_tokens():
+                mint = token.get("address")
+                if mint in seen:
+                    continue
+                seen.add(mint)
 
-            info = fetch_token_info(mint)
-            if not info:
-                continue
-            if pump_minutes(info.get("created_at", 0)) > 30:
-                continue
-            if is_promising(info):
-                await send_signal(info, "pumpfun", application)
+                info = fetch_token_info(mint)
+                if not info:
+                    continue
+                if pump_minutes(info.get("created_at", 0)) > 30:
+                    continue
+                if is_promising(info):
+                    await send_signal(info, "pumpfun", application)
 
-        for token in fetch_raylaunch_tokens():
-            mint = token.get("address") or token.get("mint")
-            if mint in seen:
-                continue
-            seen.add(mint)
+            for token in fetch_raylaunch_tokens():
+                mint = token.get("address") or token.get("mint")
+                if mint in seen:
+                    continue
+                seen.add(mint)
 
-            token["marketCap"] = token.get("market_cap", 0)
-            token["name"] = token.get("name", "Unknown")
-            token["symbol"] = token.get("symbol", "???")
-            token["holders"] = token.get("holders", 0)
-            token["devTokenPercentage"] = token.get("dev_hold", 0)
-            token["volume5m"] = token.get("volume", 0)
-            token["netflow5m"] = token.get("inflow", 0)
-            token["url"] = token.get("url", "")
+                token["marketCap"] = token.get("market_cap", 0)
+                token["name"] = token.get("name", "Unknown")
+                token["symbol"] = token.get("symbol", "???")
+                token["holders"] = token.get("holders", 0)
+                token["devTokenPercentage"] = token.get("dev_hold", 0)
+                token["volume5m"] = token.get("volume", 0)
+                token["netflow5m"] = token.get("inflow", 0)
+                token["url"] = token.get("url", "")
 
-            if ray_minutes(token.get("created_at", time.time())) > 30:
-                continue
-            if is_promising(token):
-                await send_signal(token, "raylaunch", application)
+                if ray_minutes(token.get("created_at", time.time())) > 30:
+                    continue
+                if is_promising(token):
+                    await send_signal(token, "raylaunch", application)
 
-        await asyncio.sleep(10)
+            await asyncio.sleep(10)
+    except asyncio.CancelledError:
+        print("[LOOP] Token checker cancelled.")
+    except Exception as e:
+        print(f"[ERROR] Token loop crashed: {e}")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uptime = datetime.now() - start_time
@@ -111,17 +116,26 @@ def run_all():
     threading.Thread(target=run_flask, daemon=True).start()
 
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
     application.add_handler(CommandHandler("status", status))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     async def post_init(app):
         print("[INIT] Starting token loop...")
-        asyncio.create_task(check_tokens_loop(app))
+        app.token_task = asyncio.create_task(check_tokens_loop(app))
+
+    async def shutdown(app):
+        print("[SHUTDOWN] Cancelling token loop...")
+        if hasattr(app, "token_task"):
+            app.token_task.cancel()
+            try:
+                await app.token_task
+            except asyncio.CancelledError:
+                pass
 
     application.post_init = post_init
+    application.post_shutdown = shutdown
 
-    print("[BOT] Starting polling...")
+    print("[BOT] Polling started")
     application.run_polling()
 
 if __name__ == "__main__":
