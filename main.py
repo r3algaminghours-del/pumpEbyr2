@@ -11,7 +11,6 @@ from pumpfun_api import fetch_latest_tokens, fetch_token_info, minutes_since as 
 from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
 from filter import is_promising
 
-# Получение токена из переменной окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHANNEL_ID = 1758725762
 
@@ -19,14 +18,12 @@ seen = set()
 signals_sent = 0
 start_time = datetime.now()
 
-# Flask сервер
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     return "PumpFun + RayLaunch bot is running", 200
 
-# Telegram бот
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 async def send_signal(info, source):
@@ -57,7 +54,6 @@ async def check_tokens_loop():
     while True:
         print("Checking tokens...")
 
-        # Pump.fun
         for token in fetch_latest_tokens():
             mint = token.get("address")
             if mint in seen:
@@ -71,7 +67,6 @@ async def check_tokens_loop():
             if is_promising(info):
                 await send_signal(info, source="pumpfun")
 
-        # RayLaunch
         for token in fetch_raylaunch_tokens():
             mint = token.get("address") or token.get("mint")
             if mint in seen:
@@ -109,21 +104,19 @@ def run_flask():
 
 async def main():
     asyncio.create_task(check_tokens_loop())
-    print("Bot is running with Flask + Telegram polling...")
-    await application.run_polling()
+    print("Bot is initializing...")
+
+    await application.initialize()
+    await application.start()
+    print("Bot started polling")
+    await application.run_until_disconnected()
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
 
     try:
-        # Попытка использовать текущий event loop
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(main())
-    except RuntimeError as e:
-        if "already running" in str(e):
-            # Если цикл уже работает (например, Render), просто создаём задачу
-            loop = asyncio.get_event_loop()
-            loop.create_task(main())
-            loop.run_forever()
-        else:
-            raise
+        loop.create_task(main())
+        loop.run_forever()
+    except KeyboardInterrupt:
+        print("Shutting down...")
