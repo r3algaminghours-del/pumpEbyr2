@@ -19,7 +19,7 @@ from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
 from filter import is_promising
 
 # Получаем токен из переменных окружения
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1002379895969"))
 
 app = Flask(__name__)
@@ -133,4 +133,5 @@ def run_all():
 if __name__ == "__main__":
     print("[BOT] Initializing Telegram bot...")
     run_all()
+
 
