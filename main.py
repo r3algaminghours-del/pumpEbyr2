@@ -1,107 +1,89 @@
 import asyncio
 import logging
-import os
-from flask import Flask
-from threading import Thread
+import time
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-
-from pumpfun_api import fetch_latest_tokens as fetch_pumpfun, fetch_token_info, minutes_since as pf_minutes
-from raylaunch_api import fetch_raylaunch_tokens, minutes_since as rl_minutes
-
-# === CONFIG ===
-TOKEN = "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE"
-USER_ID = 1758725762  # Личный Telegram ID
-CHECK_INTERVAL = 10  # seconds
-
-# === LOGGING ===
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(message)s",
-    datefmt="%H:%M:%S"
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
 )
 
-# === FLASK SERVER (RENDER workaround) ===
-app = Flask('')
+from pumpfun_api import fetch_latest_tokens, fetch_token_info, minutes_since as pf_minutes
+from raylaunch_api import fetch_raylaunch_tokens, minutes_since as rl_minutes
 
-@app.route('/')
-def home():
-    return "Bot is alive!"
+# === Конфигурация ===
+BOT_TOKEN = "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE"
+USER_CHAT_ID = 1758725762
 
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
+# === Логирование ===
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
 
-# === TELEGRAM COMMANDS ===
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Бот работает.")
+# === Команды ===
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Бот активен. Ожидаю токены...")
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🧠 Я получил ваше сообщение.")
+    logging.info(f"[MESSAGE] From {update.effective_user.id}: {update.message.text}")
+    await update.message.reply_text("Принято!")
 
-# === TOKEN PARSING LOOP ===
-sent_tokens = set()
-
-async def check_tokens_loop(app):
+# === Основной цикл ===
+async def check_tokens_loop(application):
+    sent_tokens = set()
     logging.info("[INIT] Starting token loop...")
+
     while True:
         logging.info("[LOOP] Checking tokens...")
 
-        # Pump.fun
-        for token in fetch_pumpfun():
-            address = token.get("id")
-            if address in sent_tokens:
-                continue
+        try:
+            pumpfun_tokens = fetch_latest_tokens()
+            ray_tokens = fetch_raylaunch_tokens()
 
-            created = pf_minutes(token.get("created"))
-            if created < 10 and token.get("tvl", 0) > 0.1:
-                info = fetch_token_info(address)
-                if info:
-                    msg = f"🔥 Новый токен на Pump.fun\n\n" \
-                          f"💠 Название: {info.get('name')}\n" \
-                          f"📈 TVL: {round(info.get('tvl', 0), 2)} SOL\n" \
-                          f"🕒 Минут с создания: {round(created, 1)}\n" \
-                          f"https://pump.fun/{address}"
-                    await app.bot.send_message(chat_id=USER_ID, text=msg)
-                    sent_tokens.add(address)
+            logging.info(f"[DEBUG] PumpFun tokens fetched: {len(pumpfun_tokens)}")
+            logging.info(f"[DEBUG] RayLaunch tokens fetched: {len(ray_tokens)}")
 
-        # RayLaunch
-        for token in fetch_raylaunch_tokens():
-            address = token.get("address")
-            if address in sent_tokens:
-                continue
+            if pumpfun_tokens:
+                logging.info(f"[DEBUG] Sample PumpFun token: {pumpfun_tokens[0]}")
+            if ray_tokens:
+                logging.info(f"[DEBUG] Sample RayLaunch token: {ray_tokens[0]}")
 
-            created = rl_minutes(token.get("created", 0))
-            if created < 10 and token.get("liquidity", 0) > 0.1:
-                msg = f"🚀 Новый токен на RayLaunch\n\n" \
-                      f"💠 Название: {token.get('name')}\n" \
-                      f"📈 Liquidity: {round(token.get('liquidity', 0), 2)} SOL\n" \
-                      f"🕒 Минут с создания: {round(created, 1)}\n" \
-                      f"https://raylaunch.app/token/{address}"
-                await app.bot.send_message(chat_id=USER_ID, text=msg)
-                sent_tokens.add(address)
+            # Отправим тестовый токен PumpFun, если есть
+            if pumpfun_tokens:
+                token = pumpfun_tokens[0]
+                msg = f"🧪 PumpFun Token: {token.get('name')} — {token.get('mint')}"
+                await application.bot.send_message(chat_id=USER_CHAT_ID, text=msg)
 
-        await asyncio.sleep(CHECK_INTERVAL)
+            # Отправим тестовый токен RayLaunch, если есть
+            if ray_tokens:
+                token = ray_tokens[0]
+                msg = f"🧪 RayLaunch Token: {token.get('name')} — {token.get('mint')}"
+                await application.bot.send_message(chat_id=USER_CHAT_ID, text=msg)
 
-# === TELEGRAM BOT ===
-async def telegram_main():
-    application = ApplicationBuilder().token(TOKEN).build()
+        except Exception as e:
+            logging.error(f"[ERROR] Loop failed: {e}")
 
-    application.add_handler(CommandHandler("status", status))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), echo))
+        await asyncio.sleep(10)  # Интервал в секундах
+
+# === Запуск бота ===
+async def main():
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     loop_task = asyncio.create_task(check_tokens_loop(application))
+
     logging.info("[BOT] Polling started")
-
     await application.run_polling()
-    loop_task.cancel()
-    logging.info("[SHUTDOWN] Token loop cancelled.")
 
-# === ENTRYPOINT ===
-def run_all():
-    Thread(target=run_flask).start()
-    import nest_asyncio
-    nest_asyncio.apply()
-    asyncio.run(telegram_main())
+    logging.info("[SHUTDOWN] Cancelling token loop...")
+    loop_task.cancel()
+    try:
+        await loop_task
+    except asyncio.CancelledError:
+        logging.info("[LOOP] Token checker cancelled.")
 
 if __name__ == "__main__":
-    run_all()
+    asyncio.run(main())
+
