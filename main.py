@@ -4,7 +4,13 @@ import os
 import asyncio
 from flask import Flask
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 from datetime import datetime
 
 from pumpfun_api import fetch_latest_tokens, fetch_token_info, minutes_since as pump_minutes
@@ -96,9 +102,17 @@ Signals sent: {signals_sent}
 Uptime: {mins} minutes"""
     await update.message.reply_text(msg)
 
+# --- Добавляем echo для отладки входящих сообщений ---
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"Received message from {update.effective_user.id}: {update.message.text}")
+    await update.message.reply_text("Got your message!")
+
+# Регистрируем обработчики
 application.add_handler(CommandHandler("status", status))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
 # --- Запуск ---
+
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
