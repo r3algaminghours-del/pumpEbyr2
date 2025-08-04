@@ -1,9 +1,12 @@
 services:
   - type: web
     name: pumpfun-bot
-    env: python
-    buildCommand: ""
-    startCommand: python main.py
+    env: docker
+    plan: free
+    autoDeploy: true
+    region: frankfurt
+    dockerCommand: ""  # Render использует CMD из Dockerfile
+    healthCheckPath: /
     envVars:
       - key: TELEGRAM_TOKEN
         value: 8180214699:AAEU79Dd8N_kCZZFXoqdifB3u0-B1BxiHgQ
