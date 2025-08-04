@@ -5,8 +5,11 @@ import asyncio
 from flask import Flask
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, ContextTypes,
-    MessageHandler, filters
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters
 )
 from datetime import datetime
 
@@ -14,8 +17,11 @@ from pumpfun_api import fetch_latest_tokens, fetch_token_info, minutes_since as 
 from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
 from filter import is_promising
 
+# Твой токен бота
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE")
-CHANNEL_ID = 1758725762  # Твой канал ID, куда будут отправляться сигналы
+
+# ID твоего телеграм-канала (например, -100xxxxxxxxxx)
+CHANNEL_ID = 1758725762
 
 seen = set()
 signals_sent = 0
@@ -27,8 +33,7 @@ app = Flask(__name__)
 def home():
     return "PumpFun + RayLaunch bot is running", 200
 
-application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
+# Отправка сигнала в канал
 async def send_signal(info, source):
     global signals_sent
     link = f"https://pump.fun/{info.get('address')}" if source == "pumpfun" else info.get("url", "")
@@ -39,29 +44,31 @@ async def send_signal(info, source):
     vol = info.get("volume5m", 0)
     name = info.get("name", "")
     symbol = info.get("symbol", "")
-    msg = f"""[NEW] Token on {source.title()}
-{name} (${symbol})
-
-MC: ${int(mc):,}
-Holders: {holders}
-Dev Hold: {dev_hold:.2f}%%
-5m Vol: ${int(vol):,}
-Netflow: ${int(inflow):,}
-
-{link}
-"""
-    await application.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="HTML")
+    msg = (
+        f"[NEW] Token on {source.title()}\n"
+        f"{name} (${symbol})\n\n"
+        f"MC: ${int(mc):,}\n"
+        f"Holders: {holders}\n"
+        f"Dev Hold: {dev_hold:.2f}%\n"
+        f"5m Vol: ${int(vol):,}\n"
+        f"Netflow: ${int(inflow):,}\n\n"
+        f"{link}"
+    )
+    await application.bot.send_message(chat_id=CHANNEL_ID, text=msg)
     signals_sent += 1
 
+# Цикл проверки новых токенов
 async def check_tokens_loop():
     while True:
         print("Checking tokens...")
 
+        # Pump.fun
         for token in fetch_latest_tokens():
             mint = token.get("address")
             if mint in seen:
                 continue
             seen.add(mint)
+
             info = fetch_token_info(mint)
             if not info:
                 continue
@@ -70,11 +77,13 @@ async def check_tokens_loop():
             if is_promising(info):
                 await send_signal(info, source="pumpfun")
 
+        # RayLaunch
         for token in fetch_raylaunch_tokens():
             mint = token.get("address") or token.get("mint")
             if mint in seen:
                 continue
             seen.add(mint)
+
             token["marketCap"] = token.get("market_cap", 0)
             token["name"] = token.get("name", "Unknown")
             token["symbol"] = token.get("symbol", "???")
@@ -83,6 +92,7 @@ async def check_tokens_loop():
             token["volume5m"] = token.get("volume", 0)
             token["netflow5m"] = token.get("inflow", 0)
             token["url"] = token.get("url", "")
+
             if ray_minutes(token.get("created_at", time.time())) > 30:
                 continue
             if is_promising(token):
@@ -90,31 +100,34 @@ async def check_tokens_loop():
 
         await asyncio.sleep(10)
 
+# Команда /status
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uptime = datetime.now() - start_time
     mins = uptime.seconds // 60
-    msg = f"""✅ Bot is running
-Sources: Pump.fun, RayLaunch
-Signals sent: {signals_sent}
-Uptime: {mins} minutes"""
+    msg = (
+        f"✅ Bot is running\n"
+        f"Sources: Pump.fun, RayLaunch\n"
+        f"Signals sent: {signals_sent}\n"
+        f"Uptime: {mins} minutes"
+    )
     await update.message.reply_text(msg)
 
+# Эхо на любые текстовые сообщения (кроме команд)
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Received message from {update.effective_user.id}: {update.message.text}")
     await update.message.reply_text("Got your message!")
 
-# Регистрируем хендлеры
-application.add_handler(CommandHandler("status", status))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-
+# Запуск Flask
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
+# Инициализация Telegram бота и запуск
 async def main():
-    # Запускаем фоновый цикл проверки токенов
+    # Фоновая задача для проверки токенов
     asyncio.create_task(check_tokens_loop())
 
     print("Bot is starting...")
+
     await application.initialize()
     await application.start()
     print("Bot started polling")
@@ -123,8 +136,15 @@ async def main():
     await application.shutdown()
 
 if __name__ == "__main__":
+    # Запускаем Flask в отдельном потоке
     threading.Thread(target=run_flask, daemon=True).start()
 
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # Добавляем хендлеры
+    application.add_handler(CommandHandler("status", status))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+    # Запускаем главный цикл
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
