@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-TELEGRAM_TOKEN = "ВАШ_ТОКЕН_ТУТ"
+TELEGRAM_TOKEN = "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE"
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Получена команда /status от {update.effective_user.id}")
@@ -22,3 +22,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
