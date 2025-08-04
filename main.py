@@ -20,7 +20,7 @@ from filter import is_promising
 
 # --- Config ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1001234567890"))  # <-- замени на свой канал
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1001234567890"))  # замените на ID вашего канала
 PORT = int(os.environ.get("PORT", 10000))
 
 # --- Globals ---
@@ -34,9 +34,6 @@ flask_app = Flask(__name__)
 @flask_app.route("/")
 def home():
     return "Bot is alive!", 200
-
-def run_flask():
-    flask_app.run(host="0.0.0.0", port=PORT)
 
 # --- Telegram Handlers ---
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -73,7 +70,7 @@ async def check_tokens_loop(application):
     while True:
         print("[LOOP] Checking tokens...")
 
-        # PumpFun
+        # Pump.fun
         for token in fetch_latest_tokens():
             mint = token.get("address")
             if mint in seen:
@@ -105,26 +102,33 @@ async def check_tokens_loop(application):
 
             if ray_minutes(token.get("created_at", time.time())) > 30:
                 continue
+
             if is_promising(token):
                 await send_signal(token, "raylaunch", bot)
 
         await asyncio.sleep(10)
 
-# --- Main ---
-async def main():
-    # Flask в отдельном потоке
-    threading.Thread(target=run_flask, daemon=True).start()
-
+async def start_bot():
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
     application.add_handler(CommandHandler("status", status))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    # Создаём задачу для фонового парсера
+    # Запуск бота и фонового цикла
     asyncio.create_task(check_tokens_loop(application))
-
     print("[BOT] Polling started")
-    await application.run_polling()
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    # Не завершаем run_polling(), чтобы не мешать Flask
+
+def start_asyncio_loop():
+    asyncio.run(start_bot())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Запускаем Telegram-бота в отдельном потоке с собственным event loop
+    threading.Thread(target=start_asyncio_loop, daemon=True).start()
+
+    # Запускаем Flask
+    flask_app.run(host="0.0.0.0", port=PORT)
+
+
