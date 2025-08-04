@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: pumpfun-bot
+    env: python
+    buildCommand: ""
+    startCommand: python main.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        value: 8180214699:AAEU79Dd8N_kCZZFXoqdifB3u0-B1BxiHgQ
