@@ -11,7 +11,7 @@ from raylaunch_api import fetch_raylaunch_tokens, minutes_since as rl_minutes
 
 # === CONFIG ===
 TOKEN = "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE"
-CHANNEL_ID = -1002379895969
+USER_ID = 1758725762  # Личный Telegram ID
 CHECK_INTERVAL = 10  # seconds
 
 # === LOGGING ===
@@ -61,7 +61,7 @@ async def check_tokens_loop(app):
                           f"📈 TVL: {round(info.get('tvl', 0), 2)} SOL\n" \
                           f"🕒 Минут с создания: {round(created, 1)}\n" \
                           f"https://pump.fun/{address}"
-                    await app.bot.send_message(chat_id=CHANNEL_ID, text=msg)
+                    await app.bot.send_message(chat_id=USER_ID, text=msg)
                     sent_tokens.add(address)
 
         # RayLaunch
@@ -77,7 +77,7 @@ async def check_tokens_loop(app):
                       f"📈 Liquidity: {round(token.get('liquidity', 0), 2)} SOL\n" \
                       f"🕒 Минут с создания: {round(created, 1)}\n" \
                       f"https://raylaunch.app/token/{address}"
-                await app.bot.send_message(chat_id=CHANNEL_ID, text=msg)
+                await app.bot.send_message(chat_id=USER_ID, text=msg)
                 sent_tokens.add(address)
 
         await asyncio.sleep(CHECK_INTERVAL)
