@@ -21,8 +21,7 @@ from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
 nest_asyncio.apply()
 
 TELEGRAM_TOKEN = "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE"
-CHANNEL_ID = -1002379895969
-
+CHANNEL_ID = 1758725762
 seen = set()
 signals_sent = 0
 start_time = datetime.now()
@@ -140,3 +139,4 @@ def run_all():
 
 if __name__ == "__main__":
     run_all()
+
