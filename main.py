@@ -11,7 +11,7 @@ from pumpfun_api import fetch_latest_tokens, fetch_token_info, minutes_since as 
 from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
 from filter import is_promising
 
-# Получаем токен из переменной окружения
+# Получение токена из переменной окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHANNEL_ID = 1758725762
 
@@ -19,14 +19,14 @@ seen = set()
 signals_sent = 0
 start_time = datetime.now()
 
-# Flask
+# Flask сервер
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     return "PumpFun + RayLaunch bot is running", 200
 
-# Telegram Bot
+# Telegram бот
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 async def send_signal(info, source):
@@ -56,6 +56,7 @@ Netflow: ${int(inflow):,}
 async def check_tokens_loop():
     while True:
         print("Checking tokens...")
+
         # Pump.fun
         for token in fetch_latest_tokens():
             mint = token.get("address")
@@ -103,15 +104,26 @@ Uptime: {mins} minutes"""
 application.add_handler(CommandHandler("status", status))
 
 # --- Запуск ---
-if __name__ == "__main__":
-    def run_flask():
-        app.run(host="0.0.0.0", port=10000)
+def run_flask():
+    app.run(host="0.0.0.0", port=10000)
 
+async def main():
+    asyncio.create_task(check_tokens_loop())
+    print("Bot is running with Flask + Telegram polling...")
+    await application.run_polling()
+
+if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
 
-    async def main():
-        asyncio.create_task(check_tokens_loop())
-        print("Bot is running with Flask + Telegram polling...")
-        await application.run_polling()
-
-    asyncio.run(main())
+    try:
+        # Попытка использовать текущий event loop
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main())
+    except RuntimeError as e:
+        if "already running" in str(e):
+            # Если цикл уже работает (например, Render), просто создаём задачу
+            loop = asyncio.get_event_loop()
+            loop.create_task(main())
+            loop.run_forever()
+        else:
+            raise
