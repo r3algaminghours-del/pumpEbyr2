@@ -1,82 +1,82 @@
 import os
-import time
-import threading
-import nest_asyncio
 import asyncio
+import logging
 from flask import Flask
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from datetime import datetime
+from parser.pumpfun import fetch_latest_tokens, fetch_token_info, pump_minutes
+from parser.raylaunch import fetch_raylaunch_tokens, ray_minutes
 
-from pumpfun_api import fetch_latest_tokens, fetch_token_info, minutes_since as pump_minutes
-from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
-from filter import is_promising
-
-nest_asyncio.apply()
-
-TELEGRAM_TOKEN = "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE"
+TOKEN = "8278714282:AAEM0iWo1J_CjSIW4oGZ588m0JTVPQv_AAE"
 CHANNEL_ID = -1002379895969
 
+# Логирование
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
+
+# Telegram handlers
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Бот работает!")
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message.text
+    user = update.effective_user.id
+    print(f"[MESSAGE] From {user}: {msg}")
+    await update.message.reply_text("Принято")
+
+# Упрощённый фильтр: пропускаем все токены с marketCap > 0
+def is_promising(token_info):
+    try:
+        return token_info.get("marketCap", 0) > 0
+    except Exception:
+        return False
+
 seen = set()
-signals_sent = 0
-start_time = datetime.now()
 
-flask_app = Flask(__name__)
+async def send_signal(token, source, app):
+    name = token.get("name", "Unknown")
+    symbol = token.get("symbol", "???")
+    market_cap = token.get("marketCap", 0)
+    holders = token.get("holders", 0)
+    dev_percent = token.get("devTokenPercentage", 0)
+    link = token.get("url", "https://pump.fun")
 
-@flask_app.route("/")
-def home():
-    return "Bot is running!", 200
+    msg = f"🚨 Новый токен ({source})\n\n"
+    msg += f"🪙 {name} ({symbol})\n"
+    msg += f"💰 MC: ${market_cap:,.0f}\n👥 Холд.: {holders}\n🛠 Dev: {dev_percent:.1f}%\n🔗 {link}"
 
-def run_flask():
-    flask_app.run(host="0.0.0.0", port=10000)
+    print(f"[SIGNAL] Sending token: {name}")
+    await app.bot.send_message(chat_id=CHANNEL_ID, text=msg)
 
-async def send_signal(info, source, application):
-    global signals_sent
-    link = f"https://pump.fun/{info.get('address')}" if source == "pumpfun" else info.get("url", "")
-    msg = (
-        f"[NEW] Token on {source.title()}\n"
-        f"{info.get('name', '')} (${info.get('symbol', '')})\n\n"
-        f"MC: ${int(info.get('marketCap', 0)):,}\n"
-        f"Holders: {info.get('holders', 0)}\n"
-        f"Dev Hold: {info.get('devTokenPercentage', 0):.2f}%\n"
-        f"5m Vol: ${int(info.get('volume5m', 0)):,}\n"
-        f"Netflow: ${int(info.get('netflow5m', 0)):,}\n\n"
-        f"{link}"
-    )
-    await application.bot.send_message(chat_id=CHANNEL_ID, text=msg)
-    signals_sent += 1
-
-async def check_tokens_loop(application):
+async def check_tokens_loop(app):
     try:
         while True:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] [LOOP] Checking tokens...")
+            now_str = datetime.now().strftime('%H:%M:%S')
+            print(f"[{now_str}] [LOOP] Checking tokens...")
 
+            # Тестовое сообщение каждые 10 сек
+            await app.bot.send_message(chat_id=CHANNEL_ID, text=f"[{now_str}] ✅ Тестовое сообщение от бота")
+
+            # Pump.fun
             for token in fetch_latest_tokens():
                 mint = token.get("address")
                 if mint in seen:
                     continue
                 seen.add(mint)
-
                 info = fetch_token_info(mint)
                 if not info:
                     continue
                 if pump_minutes(info.get("created_at", 0)) > 30:
                     continue
                 if is_promising(info):
-                    await send_signal(info, "pumpfun", application)
+                    await send_signal(info, "pumpfun", app)
 
+            # RayLaunch
             for token in fetch_raylaunch_tokens():
                 mint = token.get("address") or token.get("mint")
                 if mint in seen:
                     continue
                 seen.add(mint)
-
                 token["marketCap"] = token.get("market_cap", 0)
                 token["name"] = token.get("name", "Unknown")
                 token["symbol"] = token.get("symbol", "???")
@@ -85,58 +85,41 @@ async def check_tokens_loop(application):
                 token["volume5m"] = token.get("volume", 0)
                 token["netflow5m"] = token.get("inflow", 0)
                 token["url"] = token.get("url", "")
-
-                if ray_minutes(token.get("created_at", time.time())) > 30:
+                if ray_minutes(token.get("created_at", 0)) > 30:
                     continue
                 if is_promising(token):
-                    await send_signal(token, "raylaunch", application)
+                    await send_signal(token, "raylaunch", app)
 
             await asyncio.sleep(10)
+
     except asyncio.CancelledError:
         print("[LOOP] Token checker cancelled.")
     except Exception as e:
         print(f"[ERROR] Token loop crashed: {e}")
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uptime = datetime.now() - start_time
-    mins = uptime.seconds // 60
-    msg = (
-        f"✅ Bot is running\n"
-        f"Sources: Pump.fun, RayLaunch\n"
-        f"Signals sent: {signals_sent}\n"
-        f"Uptime: {mins} minutes"
-    )
-    await update.message.reply_text(msg)
+# Flask server to keep alive
+flask_app = Flask(__name__)
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"[MESSAGE] From {update.effective_user.id}: {update.message.text}")
-    await update.message.reply_text("Got your message!")
+@flask_app.route("/")
+def home():
+    return "Bot is running!"
 
-def run_all():
-    threading.Thread(target=run_flask, daemon=True).start()
+# Главный старт
+async def main():
+    from nest_asyncio import apply
+    apply()
 
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    application.add_handler(CommandHandler("status", status))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application = ApplicationBuilder().token(TOKEN).build()
 
-    async def post_init(app):
-        print("[INIT] Starting token loop...")
-        app.token_task = asyncio.create_task(check_tokens_loop(app))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    async def shutdown(app):
-        print("[SHUTDOWN] Cancelling token loop...")
-        if hasattr(app, "token_task"):
-            app.token_task.cancel()
-            try:
-                await app.token_task
-            except asyncio.CancelledError:
-                pass
+    asyncio.create_task(check_tokens_loop(application))
 
-    application.post_init = post_init
-    application.post_shutdown = shutdown
-
-    print("[BOT] Polling started")
-    application.run_polling()
+    print("[INIT] Starting token loop...")
+    await application.run_polling()
 
 if __name__ == "__main__":
-    run_all()
+    import threading
+    threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=10000)).start()
+    asyncio.run(main())
