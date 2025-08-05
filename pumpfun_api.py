@@ -1,25 +1,24 @@
+import logging
 import requests
-import time
 
-PUMPFUN_URL = "https://pump.fun/api/token/{}"
+PUMPFUN_API_URL = "https://pump.fun/api/tokens"
 
-def fetch_latest_tokens():
+def get_new_pumpfun_tokens():
     try:
-        res = requests.get("https://pump.fun/api/tokens")
-        if res.status_code != 200:
-            return []
-        return res.json()
-    except Exception:
+        response = requests.get(PUMPFUN_API_URL, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        logging.info(f"[PUMPFUN_API] Response: {type(data)} - {len(data)} items")
+
+        new_tokens = []
+        for token in data:
+            # пример фильтрации — можно адаптировать
+            if token.get("is_new", False):
+                new_tokens.append(token.get("name", "UnnamedToken"))
+
+        return new_tokens
+
+    except Exception as e:
+        logging.error(f"[PUMPFUN_API] Error: {e}")
         return []
-
-def fetch_token_info(address):
-    try:
-        res = requests.get(PUMPFUN_URL.format(address))
-        if res.status_code != 200:
-            return None
-        return res.json()
-    except Exception:
-        return None
-
-def minutes_since(timestamp):
-    return (time.time() - timestamp) / 60
