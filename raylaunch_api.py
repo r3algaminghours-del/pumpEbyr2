@@ -1,17 +1,24 @@
+import logging
 import requests
-import time
 
-BASE_URL = "https://api.raylaunch.app/api/launchpad/recent"
+RAYLAUNCH_API_URL = "https://api.raylaunch.xyz/tokens"
 
-def fetch_raylaunch_tokens():
+def get_new_raylaunch_tokens():
     try:
-        res = requests.get(BASE_URL)
-        if res.status_code != 200:
-            return []
-        data = res.json()
-        return data.get("tokens", [])
-    except Exception:
-        return []
+        response = requests.get(RAYLAUNCH_API_URL, timeout=10)
+        response.raise_for_status()
+        data = response.json()
 
-def minutes_since(timestamp):
-    return (time.time() - timestamp) / 60
+        logging.info(f"[RAYLAUNCH_API] Response: {type(data)} - {len(data)} items")
+
+        new_tokens = []
+        for token in data:
+            # пример фильтрации — можно адаптировать
+            if token.get("is_new", False):
+                new_tokens.append(token.get("name", "UnnamedToken"))
+
+        return new_tokens
+
+    except Exception as e:
+        logging.error(f"[RAYLAUNCH_API] Error: {e}")
+        return []
