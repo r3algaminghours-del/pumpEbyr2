@@ -1,6 +1,6 @@
 python-telegram-bot>=20.0,<21.0
 flask==2.3.3
 requests==2.31.0
-nest_asyncio
 websockets==11.0.3
+nest_asyncio
 
