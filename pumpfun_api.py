@@ -1,7 +1,7 @@
 import logging
 import requests
 
-PUMPFUN_API_URL = "https://pump.fun/api/tokens"
+PUMPFUN_API_URL = "https://client-api-2.pump.fun/tokens?sort=recent"
 
 def get_new_pumpfun_tokens():
     try:
@@ -22,3 +22,4 @@ def get_new_pumpfun_tokens():
     except Exception as e:
         logging.error(f"[PUMPFUN_API] Error: {e}")
         return []
+
