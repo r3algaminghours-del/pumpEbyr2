@@ -17,24 +17,22 @@ def minutes_since(timestamp):
     return diff.total_seconds() / 60
 
 # Асинхронная подписка на WebSocket Pump.fun
-def listen_pumpfun_tokens(callback):
-    async def listen():
-        async for ws in websockets.connect(PUMP_WS_URL):
-            try:
+async def listen_pumpfun_tokens(callback):
+    while True:
+        try:
+            async with websockets.connect(PUMP_WS_URL) as ws:
                 logger.info("[PUMPFUN] Connected to WebSocket")
                 async for message in ws:
                     try:
                         data = json.loads(message)
                         if isinstance(data, list):
-                            logger.debug(f"[PUMPFUN] Received batch with {len(data)} tokens")
+                            logger.debug(f"[PUMPFUN] Received {len(data)} tokens")
                             await callback(data)
                     except Exception as e:
                         logger.error(f"[PUMPFUN] Error parsing message: {e}")
-            except websockets.exceptions.ConnectionClosed:
-                logger.warning("[PUMPFUN] WebSocket closed, reconnecting...")
-                await asyncio.sleep(2)
-            except Exception as e:
-                logger.error(f"[PUMPFUN] Connection error: {e}")
-                await asyncio.sleep(5)
-
-    return listen
+        except websockets.exceptions.ConnectionClosed:
+            logger.warning("[PUMPFUN] WebSocket closed, reconnecting...")
+            await asyncio.sleep(2)
+        except Exception as e:
+            logger.error(f"[PUMPFUN] Connection error: {e}")
+            await asyncio.sleep(5)
