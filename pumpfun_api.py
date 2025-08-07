@@ -1,25 +1,40 @@
+import asyncio
+import websockets
+import json
 import logging
-import requests
+from datetime import datetime
 
-PUMPFUN_API_URL = "https://client-api-2.pump.fun/tokens?sort=recent"
+logger = logging.getLogger("pumpfun_api")
 
-def get_new_pumpfun_tokens():
-    try:
-        response = requests.get(PUMPFUN_API_URL, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+PUMP_WS_URL = "wss://pumpportal.fun/api/data"
 
-        logging.info(f"[PUMPFUN_API] Response: {type(data)} - {len(data)} items")
+# Возвращает, сколько минут назад был создан токен
+def minutes_since(timestamp):
+    if not timestamp:
+        return 999
+    dt = datetime.fromtimestamp(timestamp)
+    diff = datetime.now() - dt
+    return diff.total_seconds() / 60
 
-        new_tokens = []
-        for token in data:
-            # пример фильтрации — можно адаптировать
-            if token.get("is_new", False):
-                new_tokens.append(token.get("name", "UnnamedToken"))
+# Асинхронная подписка на WebSocket Pump.fun
+def listen_pumpfun_tokens(callback):
+    async def listen():
+        async for ws in websockets.connect(PUMP_WS_URL):
+            try:
+                logger.info("[PUMPFUN] Connected to WebSocket")
+                async for message in ws:
+                    try:
+                        data = json.loads(message)
+                        if isinstance(data, list):
+                            logger.debug(f"[PUMPFUN] Received batch with {len(data)} tokens")
+                            await callback(data)
+                    except Exception as e:
+                        logger.error(f"[PUMPFUN] Error parsing message: {e}")
+            except websockets.exceptions.ConnectionClosed:
+                logger.warning("[PUMPFUN] WebSocket closed, reconnecting...")
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(f"[PUMPFUN] Connection error: {e}")
+                await asyncio.sleep(5)
 
-        return new_tokens
-
-    except Exception as e:
-        logging.error(f"[PUMPFUN_API] Error: {e}")
-        return []
-
+    return listen
