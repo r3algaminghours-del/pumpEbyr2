@@ -14,7 +14,7 @@ from telegram.ext import (
 )
 from datetime import datetime
 
-from pumpfun_api import fetch_latest_tokens, fetch_token_info, minutes_since as pump_minutes
+from pumpfun_api import listen_pumpfun_tokens
 from raylaunch_api import fetch_raylaunch_tokens, minutes_since as ray_minutes
 from filter import is_promising
 
@@ -52,24 +52,28 @@ async def send_signal(info, source, application):
     await application.bot.send_message(chat_id=CHANNEL_ID, text=msg)
     signals_sent += 1
 
-async def check_tokens_loop(application):
+async def handle_pump_tokens(tokens, application):
+    for token in tokens:
+        mint = token.get("address") or token.get("mint")
+        if mint in seen:
+            continue
+        seen.add(mint)
+
+        token["marketCap"] = token.get("market_cap", 0)
+        token["name"] = token.get("name", "Unknown")
+        token["symbol"] = token.get("symbol", "???")
+        token["holders"] = token.get("holders", 0)
+        token["devTokenPercentage"] = token.get("dev_hold", 0)
+        token["volume5m"] = token.get("volume", 0)
+        token["netflow5m"] = token.get("inflow", 0)
+
+        if is_promising(token):
+            await send_signal(token, "pumpfun", application)
+
+async def raylaunch_loop(application):
     try:
         while True:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] [LOOP] Checking tokens...")
-
-            for token in fetch_latest_tokens():
-                mint = token.get("address")
-                if mint in seen:
-                    continue
-                seen.add(mint)
-
-                info = fetch_token_info(mint)
-                if not info:
-                    continue
-                if pump_minutes(info.get("created_at", 0)) > 30:
-                    continue
-                if is_promising(info):
-                    await send_signal(info, "pumpfun", application)
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] [RAYLAUNCH] Checking tokens...")
 
             for token in fetch_raylaunch_tokens():
                 mint = token.get("address") or token.get("mint")
@@ -88,21 +92,22 @@ async def check_tokens_loop(application):
 
                 if ray_minutes(token.get("created_at", time.time())) > 30:
                     continue
+
                 if is_promising(token):
                     await send_signal(token, "raylaunch", application)
 
             await asyncio.sleep(10)
     except asyncio.CancelledError:
-        print("[LOOP] Token checker cancelled.")
+        print("[RAYLAUNCH] Loop cancelled.")
     except Exception as e:
-        print(f"[ERROR] Token loop crashed: {e}")
+        print(f"[RAYLAUNCH] Error: {e}")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uptime = datetime.now() - start_time
     mins = uptime.seconds // 60
     msg = (
         f"✅ Bot is running\n"
-        f"Sources: Pump.fun, RayLaunch\n"
+        f"Sources: Pump.fun (WebSocket), RayLaunch\n"
         f"Signals sent: {signals_sent}\n"
         f"Uptime: {mins} minutes"
     )
@@ -120,17 +125,20 @@ def run_all():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     async def post_init(app):
-        print("[INIT] Starting token loop...")
-        app.token_task = asyncio.create_task(check_tokens_loop(app))
+        print("[INIT] Starting token tasks...")
+        app.pump_task = asyncio.create_task(listen_pumpfun_tokens(lambda tokens: handle_pump_tokens(tokens, app)))
+        app.ray_task = asyncio.create_task(raylaunch_loop(app))
 
     async def shutdown(app):
-        print("[SHUTDOWN] Cancelling token loop...")
-        if hasattr(app, "token_task"):
-            app.token_task.cancel()
-            try:
-                await app.token_task
-            except asyncio.CancelledError:
-                pass
+        print("[SHUTDOWN] Cancelling tasks...")
+        for task_name in ["pump_task", "ray_task"]:
+            task = getattr(app, task_name, None)
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     application.post_init = post_init
     application.post_shutdown = shutdown
