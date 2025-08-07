@@ -9,34 +9,28 @@ import threading
 from pumpfun_api import get_new_pumpfun_tokens
 from raylaunch_api import get_new_raylaunch_tokens
 
-# Токен Telegram-бота
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 USER_ID = 1758725762
-CHECK_INTERVAL = 10  # секунд
+CHECK_INTERVAL = 10
 
-# Логирование
 logging.basicConfig(
     format='[%(asctime)s] [%(levelname)s] %(message)s',
     level=logging.INFO
 )
 
-# Flask-приложение для Render
 app = Flask(__name__)
 
 @app.route('/')
 def index():
     return 'PumpFun + RayLaunch bot is running'
 
-# Хэндлер команды /status
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bot is up and running!")
 
-# Ответ на любое сообщение
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.info(f"[MESSAGE] From {update.effective_user.id}: {update.message.text}")
     await update.message.reply_text("👋 Привет! Используй /status чтобы проверить статус бота.")
 
-# Отправка сообщения
 async def send_message_to_user(bot, user_id, text):
     try:
         await bot.send_message(chat_id=user_id, text=text)
@@ -44,7 +38,6 @@ async def send_message_to_user(bot, user_id, text):
     except Exception as e:
         logging.error(f"[ERROR] Failed to send message: {e}")
 
-# Цикл проверки новых токенов
 async def token_checker(bot):
     logging.info("[INIT] Starting token loop...")
     sent_tokens = set()
@@ -72,23 +65,24 @@ async def token_checker(bot):
 
         await asyncio.sleep(CHECK_INTERVAL)
 
-# Запуск Telegram polling и токен-чекера
 async def main():
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     application.add_handler(CommandHandler("status", status))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    loop = asyncio.get_running_loop()
-    loop.create_task(token_checker(application.bot))
+    asyncio.get_event_loop().create_task(token_checker(application.bot))
 
     logging.info("[BOT] Polling started")
     await application.run_polling()
 
-# Запуск Flask на отдельном потоке
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
-    asyncio.run(main())
+
+    # fix: don't call asyncio.run()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+
