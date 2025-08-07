@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 BITQUERY_URL = "https://graphql.bitquery.io/"
-BITQUERY_API_KEY = os.getenv("BITQUERY_API_KEY", "ory_at_U3FMSuNo5KgrcuAkL9ic0r7hGRX7y8APOU0IHlmo7Sk.8kWD-paDRlg2-tukTV-w1cYAppmfxqswKUlUYYJIyTw")
+BITQUERY_API_KEY = os.getenv("BITQUERY_API_KEY", "ory_at_z5nmCYRkee-7v2ZeBSd5NOoKrts0xnxxFAlp1gH6jBo.CfZTkZhqz5bvFNw5lS7wSiHhjYoTFEwrJZdNpv3LZ3o")
 
 def minutes_since(timestamp):
     if not timestamp:
@@ -88,4 +88,5 @@ def fetch_raylaunch_tokens():
     except Exception as e:
         logging.error(f"[RAYLAUNCH_API] Error: {e}")
         return []
+
 
